@@ -3,8 +3,11 @@ import logging.config
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from libredte.api_client import ApiException
+from requests.exceptions import ConnectionError, Timeout
 
 from .auth.router import router as auth_router
 from .config import settings
@@ -40,6 +43,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(ApiException)
+async def api_exception_handler(request: Request, exc: ApiException):
+    status = exc.code if exc.code and 400 <= exc.code < 600 else 502
+    return JSONResponse(status_code=status, content={"detail": str(exc)})
+
+
+@app.exception_handler(Timeout)
+async def timeout_handler(request: Request, exc: Timeout):
+    return JSONResponse(status_code=504, content={"detail": "LibreDTE no respondió a tiempo"})
+
+
+@app.exception_handler(ConnectionError)
+async def conn_error_handler(request: Request, exc: ConnectionError):
+    return JSONResponse(status_code=502, content={"detail": "No se pudo conectar a LibreDTE"})
+
 
 app.include_router(auth_router)
 app.include_router(dte_router)
